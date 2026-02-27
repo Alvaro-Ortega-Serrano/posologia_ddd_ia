@@ -1,0 +1,91 @@
+%macro evalua_IA_DDD;
+	data tab_ini;
+		set &lib_ini..&tab_ini(where=(ind_gpt=1) obs=&obs firstobs=&firstobs);	
+	run;
+
+	data _null_;
+		set tab_ini nobs=nobs;
+		call symputx('nobs', nobs);
+	run;
+
+	%put &nobs;
+
+	%do nreg=1 %to &nobs;
+	
+	/*Se recogen de la tabla las variables de presentación y la salida esperada*/
+	data _null_;
+		set tab_ini(obs=&nreg firstobs=&nreg);
+		call symputx('cn', cn);
+		call symputx('input', &var_estudio);
+		call symputx('output', &var_resp);
+		call symputx('input_pregunta', catx(' ',&contexto, &pregunta, &var_estudio));
+	run;
+
+	%put &input_pregunta;
+	/*Se ejecuta el código python con la evaluación*/
+	%if &modelo_python=azure %then %do;
+		%include script ('evaluacion_azure.sas');
+		%let const=1;
+	%end;
+
+	%if &modelo_python=geval %then %do;
+		%include script ('evaluacion_geval.sas');
+		%let const=10;
+	%end;
+	%let resultados = %sysfunc(compress(%bquote(&resultados),'"'));
+	
+	%if &nreg=1 %then %do;
+
+		data &lib_fin..&tab_fin;
+			length cn 8. &var_estudio $200. &var_resp $20. %do v=1 %to %sysfunc(countw(&criterios_var)); %scan(&criterios_var,&v) %end; 8. justificacion $1000.;
+			cn=&cn;
+			&var_estudio="&input";
+			&var_resp="&output";
+
+			%do v=1 %to %sysfunc(countw(&criterios_var));
+				%scan(&criterios_var,&v)=scan(scan("&resultados",&v,','),2,':')*&const;
+			%end;
+
+			%if %sysfunc(countw("&resultados",%str(,)))>&v %then %do;
+				justificacion=catx(',', %do w=&v %to %sysfunc(countw("&resultados",%str(,))); %if &w=&v %then %do; scan(scan("&resultados",&w,','),2,':') %end; %else %do; scan("&resultados",&w,',') %end;, %end; '.');			
+			%end; %else %do;
+				justificacion=scan(scan("&resultados",&v,','),2,':');
+			%end;
+		run;
+	%end; %else %do;
+		data tab_fin;
+			length cn 8. &var_estudio $200. &var_resp $20. %do v=1 %to %sysfunc(countw(&criterios_var)); %scan(&criterios_var,&v) %end;  8. justificacion $1000.;
+			cn=&cn;
+			&var_estudio="&input";
+			&var_resp="&output";
+			%do v=1 %to %sysfunc(countw(&criterios_var));
+			%scan(&criterios_var,&v)=scan(scan("&resultados",&v,','),2,':')*&const;
+			%end;
+			%if %sysfunc(countw("&resultados",%str(,)))>&v %then %do;
+			justificacion=catx(',', %do w=&v %to %sysfunc(countw("&resultados",%str(,))); %if &w=&v %then %do; scan(scan("&resultados",&w,','),2,':') %end; %else %do; scan("&resultados",&w,',') %end;, %end; '.');			
+			%end; %else %do;
+			justificacion=scan(scan("&resultados",&v,','),2,':');
+			%end;
+		run;
+		data &lib_fin..&tab_fin;
+			set &lib_fin..&tab_fin tab_fin;
+		run;
+
+	%end;
+
+%end;
+
+data &lib_fin..&tab_fin;
+	set &lib_fin..&tab_fin;
+	length comp_1 $200.;
+	comp_1 = find(upcase(justificacion), 'LA DDD CORRECTA SERÍA');
+	DDD_azure = scan(scan(substr(justificacion, comp_1),1,'.'),2,':');
+	DDD_azure_numero = compress(DDD_azure,,'kd')*1;
+	DDD_azure_unidad = compress(DDD_azure,,'d');
+
+	if compress(translate(&var_resp,'.',','),,'kpd')*1=DDD_azure_numero or DDD_azure_numero=. then correcto_azure_gpt=1;
+	else correcto_azure_gpt=0;
+	drop comp: p ;
+run;
+
+%mend evalua_IA_DDD;

@@ -1,0 +1,35 @@
+/****************************************************/
+/*          FLUJO PRINCIPAL                         */
+/****************************************************/
+
+/* 1. Primero se inicia sesión en CAS para ver todas las librerías y tablas disponibles*/
+options CASDATALIMIT=ALL;
+/* 2. Se crea la tabla inicial con las columnas necesarias para el estudio*/
+proc sql;
+    create table tabla as
+    select cn, posologia_cima, DDD, UNIDAD_DOSIS
+    from tabla1;
+quit;
+/* 3. Después se define la tabla de origen de los datos, la variable a analizar, la variable de respuesta y el número de observaciones que se desean obtener en esta ejecución*/
+%let lib_ini=FARMA;
+%let tab_ini=tabla;
+%let var_estudio=posologia_cima;
+%let var_resp=ddd_gpt_cantidad;
+%let obs=10;
+%let firstobs=1;
+/* 4. Ahora se definen los parámetros de conexión con la API*/
+%let api_key= " ";
+%let url=https://msan-ec-sweden.openai.azure.com/;
+%let version=2024-12-01-preview;
+%let model_name=gpt-5.1-chat;
+/* 5. Aqui se define la librería y la tabla de salida*/
+%let lib_fin=work;
+%let tab_fin=PRESENTACIONES_1;
+/* 6. Aqui se define el criterio de evaluación utilizado */
+%let criterios = Corrección factual;
+%let criterios_var = correccion;
+%let criterio_valor = Corrección factual (1-10): <valor>;
+/* 7. Aqui se selecciona el modelo a utilizar y se llama a la macro */
+%let modelo_python = azure;
+%include script ('evalua_IA_DDD.sas');
+%evalua_IA_DDD;
